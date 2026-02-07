@@ -16,7 +16,7 @@ import asyncio
 
 from absl import app, flags
 from openai import OpenAI
-import multi_agent_planner_qwen
+import multi_agent_planner
 
 from dotenv import load_dotenv
 load_dotenv()  # loads .env into environment variables
@@ -26,7 +26,7 @@ FLAGS = flags.FLAGS
 
 DATA_PATH = flags.DEFINE_string(
     "data_path",
-    "calendar_scheduling_input.json",
+    "calendar_scheduling.json",
     "Path to the input data file containing examples in json format.",
 )
 OUT_PATH = flags.DEFINE_string(
@@ -169,7 +169,7 @@ async def _run_all(data: Dict[str, Dict[str, Any]]) -> None:
         print(f"User prompt:\n{user_prompt}\n")
 
         # ✅ async call
-        pred_text = await multi_agent_planner_qwen.invoke(user_prompt)
+        pred_text = await multi_agent_planner.invoke(user_prompt, MODEL.value)
 
         item["pred_5shot_pro"] = pred_text
         item["pred_model"] = MODEL.value

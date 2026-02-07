@@ -295,6 +295,7 @@ async def call_openrouter_qwen(system_prompt: str, user_text: str) -> str:
     LangChain-based equivalent of your httpx OpenRouter call.
     Returns the raw model text (expected to be JSON).
     """
+    print(f'Using SLM model: {slm.model_name}\n')
     resp = await slm.ainvoke(
         [
             SystemMessage(content=system_prompt),
@@ -915,7 +916,16 @@ async def process_message(user_text: str) -> str:
     result = await graph.ainvoke(initial_state)
     return result
 
-async def invoke(user_text: str):
+async def invoke(user_text: str, mode: str = "qwen/qwen-2.5-7b-instruct"):
+    global OPENROUTER_MODEL, slm
+    if mode and mode != OPENROUTER_MODEL:
+        OPENROUTER_MODEL = mode
+        slm = ChatOpenAI(
+            model=OPENROUTER_MODEL,                   # OpenRouter model slug
+            base_url="https://openrouter.ai/api/v1",  # OpenRouter endpoint
+            api_key=os.environ["OPENROUTER_API_KEY"], # your OpenRouter key
+            temperature=0.0,
+        )
     final_input = normalize(user_text)
     print(f'Final input :{final_input}')
     result = await process_message(final_input)

@@ -16,8 +16,13 @@ import uuid
 from dotenv import load_dotenv
 import asyncio
 import user_inputs
+import few_shot_prompts
 
 load_dotenv(override=True)
+
+# Global metadata injected by caller
+num_people: str = ""
+num_days: str = ""
 
 # ----------------------------
 # Validation and Utility Functions
@@ -331,71 +336,34 @@ async def constraint_extractor(state: GraphState) -> GraphState:
     Rules to handle preferences -
     Apart from the directly provided constraints, pay extra attention to any extra preferences by any of the participants. 
     This preference will usually be mentioned at the very end. Look for words like "rather", "do not", "avoid", "can not" etc
-    Assuming work hour ends at 17:00,
+    Assuming work hour is between  9:00 and 17:00,
     A text like "Dylan do not want to meet on Monday after 13:30", implies a new entry in "busy" field like {"day": "Monday", "time": ["13:30", "17:00"]}
-    A text like "Dylan can not meet on Monday before 14:00", implies a new entry "busy" field like {"day": "Monday", "time": ["9:00", "14:00"]}
     A text like "Tom would rather not meet on Monday before 11:00", implies a new entry "busy" field like {"day": "Monday", "time": ["9:00", "11:00"]}
 
-    Some examples with preferences at the end-
-    EXAMPLE 1 :
-    Input -
-    Dylan and Samuel need to meet for half an hour between the work hours of 9:00 to 17:00 on Monday. \n\n
-    Here are the existing schedules for everyone during the day: \n
-    Dylan's calendar is wide open the entire day.\n
-    Samuel is busy on Monday during 9:00 to 11:00, 11:30 to 13:00, 13:30 to 14:00, 14:30 to 16:00, 16:30 to 17:00; \n\n
-    Dylan do not want to meet on Monday after 13:30.
-
-    Output -
-    {
-    "day": ["Monday"],
-    "work_hours": ["9:00", "17:00"],
-    "duration_minutes": 30,
-    "participants": ["Dylan", "Samuel"],
-    "busy": {
-        "Dylan": [
-            { "day": "Monday", "time": ["13:30", "17:00"] }
-        ],
-        "Samuel": [
-            { "day": "Monday", "time": ["9:00", "11:00"] },
-            { "day": "Monday", "time": ["11:30", "13:00"] },
-            { "day": "Monday", "time": ["13:30", "14:00"] },
-            { "day": "Monday", "time": ["14:30", "16:00"] },
-            { "day": "Monday", "time": ["16:30", "17:00"] }
-        ]
-            }
-    }
-
-    EXAMPLE 2 :
-    Input -
-    Joseph and Dylan need to meet for one hour between the work hours of 9:00 to 17:00 on Monday. \n\n
-    Here are the existing schedules for everyone during the day: \n
-    Joseph has blocked their calendar on Monday during 11:30 to 12:00, 15:30 to 17:00; \n
-    Dylan has meetings on Monday during 9:00 to 10:30, 12:30 to 13:00, 13:30 to 14:30, 16:00 to 17:00; \n\n
-    Dylan can not meet on Monday before 14:00.
-
-    Output -
-    {
-    "day": ["Monday"],
-    "work_hours": ["9:00", "17:00"],
-    "duration_minutes": 60,
-    "participants": ["Joseph", "Dylan"],
-    "busy": {
-        "Joseph": [
-            { "day": "Monday", "time": ["11:30", "12:00"] },
-            { "day": "Monday", "time": ["15:30", "17:00"] }
-        ],
-        "Dylan": [
-            { "day": "Monday", "time": ["9:00", "10:30"] },
-            { "day": "Monday", "time": ["12:30", "13:00"] },
-            { "day": "Monday", "time": ["13:30", "14:30"] },
-            { "day": "Monday", "time": ["16:00", "17:00"] },
-            { "day": "Monday", "time": ["9:00", "14:00"] }
-        ]
-            }
-    }
-
+    Here are a few examples-\n
     """
         )
+
+    if num_people == "2" and num_days == "1":
+        system_prompt += few_shot_prompts.two_people_one_day_constraint_extractor
+    elif num_people == "2" and num_days == "2":
+        system_prompt += few_shot_prompts.two_people_two_day_constraint_extractor
+    elif num_people == "2" and num_days == "3":
+        system_prompt += few_shot_prompts.two_people_three_day_constraint_extractor
+    elif num_people == "2" and num_days == "4":
+        system_prompt += few_shot_prompts.two_people_four_day_constraint_extractor
+    elif num_people == "2" and num_days == "5":
+        system_prompt += few_shot_prompts.two_people_five_day_constraint_extractor
+    elif num_people == "3" and num_days == "1":
+        system_prompt += few_shot_prompts.three_people_one_day_constraint_extractor
+    elif num_people == "4" and num_days == "1":
+        system_prompt += few_shot_prompts.four_people_one_day_constraint_extractor
+    elif num_people == "5" and num_days == "1":
+        system_prompt += few_shot_prompts.five_people_one_day_constraint_extractor
+    elif num_people == "6" and num_days == "1":
+        system_prompt += few_shot_prompts.six_people_one_day_constraint_extractor
+    elif num_people == "7" and num_days == "1":
+        system_prompt += few_shot_prompts.seven_people_one_day_constraint_extractor
 
 
     # Get the latest human input (fallback: join all message contents)
@@ -582,36 +550,29 @@ async def solver_agent(state: GraphState) -> GraphState:
 
         Round off all times to the nearest multiple of 30 minutes. For example 12:27 should be rounded off to 12:30, 11:07 should be rounded off to 11:00 and so on.
 
-        Examples -
-        EXAMPLE 1 :
-        Input -
-        {
-        "day": ["Monday"],
-        "work_hours": ["9:00", "17:00"], # [start_time, end_time]
-        "duration_minutes": 60, # duration in minutes
-        "participants": ["Joseph", "Dylan"], # list of participants
-        "busy": {
-            "Joseph": [
-                { "day": "Monday", "time": ["11:30", "12:00"] }, # This means Joseph is busy on Monday from 11:30 to 12:00
-                { "day": "Monday", "time": ["15:30", "17:00"] }
-            ],
-            "Dylan": [
-                { "day": "Monday", "time": ["9:00", "10:30"] }, # This means Dylan is busy on Monday from 9:00 to 10:30
-                { "day": "Monday", "time": ["12:30", "13:00"] },
-                { "day": "Monday", "time": ["13:30", "14:30"] },
-                { "day": "Monday", "time": ["16:00", "17:00"] },
-                { "day": "Monday", "time": ["9:00", "14:00"] }
-            ]
-                }
-        }
-        Find a day and time where no participant is busy.
-
-        Output -
-        {"day": "Monday", "proposed_slot": ["14:30", "15:30"]}
-
-        The above output works because neither Joseph nor Dylan is busy between 14:30 to 15:30 on Monday.
+        Here are a few examples -\n
         """ 
     )
+    if num_people == "2" and num_days == "1":
+        system_prompt += few_shot_prompts.two_people_one_day_solver
+    elif num_people == "2" and num_days == "2":
+        system_prompt += few_shot_prompts.two_people_two_day_solver
+    elif num_people == "2" and num_days == "3":
+        system_prompt += few_shot_prompts.two_people_three_day_solver
+    elif num_people == "2" and num_days == "4":
+        system_prompt += few_shot_prompts.two_people_four_day_solver
+    elif num_people == "2" and num_days == "5":
+        system_prompt += few_shot_prompts.two_people_five_day_solver
+    elif num_people == "3" and num_days == "1":
+        system_prompt += few_shot_prompts.three_people_one_day_solver
+    elif num_people == "4" and num_days == "1":
+        system_prompt += few_shot_prompts.four_people_one_day_solver
+    elif num_people == "5" and num_days == "1":
+        system_prompt += few_shot_prompts.five_people_one_day_solver
+    elif num_people == "6" and num_days == "1":
+        system_prompt += few_shot_prompts.six_people_one_day_solver
+    elif num_people == "7" and num_days == "1":
+        system_prompt += few_shot_prompts.seven_people_one_day_solver
 
     user_text = state.get("constraint_extractor_output", "")
     if not user_text:
@@ -916,8 +877,20 @@ async def process_message(user_text: str) -> str:
     result = await graph.ainvoke(initial_state)
     return result
 
-async def invoke(user_text: str, mode: str = "qwen/qwen-2.5-7b-instruct"):
-    global OPENROUTER_MODEL, slm
+async def invoke(
+    user_text: str,
+    mode: str = "qwen/qwen-2.5-7b-instruct",
+    input_meta: Optional[Dict[str, Any]] = None,
+):
+    global OPENROUTER_MODEL, slm, num_people, num_days
+    if isinstance(input_meta, dict):
+        num_people_value = input_meta.get("num_people", "")
+        num_days_value = input_meta.get("num_days", "")
+        num_people = "" if num_people_value is None else str(num_people_value)
+        num_days = "" if num_days_value is None else str(num_days_value)
+    else:
+        num_people = ""
+        num_days = ""
     if mode and mode != OPENROUTER_MODEL:
         OPENROUTER_MODEL = mode
         slm = ChatOpenAI(
